@@ -1,1 +1,0 @@
-# yocuidomiparchesubaa.github.io
