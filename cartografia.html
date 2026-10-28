@@ -1,0 +1,1264 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MAPA URBANO — Sistema de Puntos</title>
+
+<!-- Leaflet CSS -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<!-- Google Fonts -->
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Rajdhani:wght@400;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+
+<style>
+  :root {
+    --critico: #FF2020;
+    --cultural: #FFD700;
+    --confianza: #1E90FF;
+    --expendio: #FF7F00;
+    --casa: #9B59B6;
+    --trazado: #00FF9D;
+    --bg: #0a0a0f;
+    --panel: #111118;
+    --panel2: #1a1a24;
+    --border: #2a2a3a;
+    --text: #e8e8f0;
+    --muted: #6a6a8a;
+    --accent: #00FF9D;
+    --font-display: 'Bebas Neue', sans-serif;
+    --font-body: 'Rajdhani', sans-serif;
+    --font-mono: 'Share Tech Mono', monospace;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-body);
+    height: 100vh;
+    overflow: hidden;
+    position: relative;
+  }
+
+  /* Grain overlay */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 9999;
+    opacity: 0.6;
+  }
+
+  /* ══ LAYOUT ══ */
+  #app {
+    display: grid;
+    grid-template-columns: 300px 1fr;
+    grid-template-rows: 60px 1fr;
+    height: 100vh;
+  }
+
+  /* ══ HEADER ══ */
+  #header {
+    grid-column: 1 / -1;
+    background: var(--panel);
+    border-bottom: 2px solid var(--border);
+    display: flex;
+    align-items: center;
+    padding: 0 20px;
+    gap: 16px;
+    position: relative;
+    overflow: hidden;
+  }
+  #header::after {
+    content: '';
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, var(--critico), var(--cultural), var(--confianza), var(--expendio), var(--casa), var(--accent));
+  }
+  #header h1 {
+    font-family: var(--font-display);
+    font-size: 28px;
+    letter-spacing: 4px;
+    color: var(--accent);
+    text-shadow: 0 0 20px rgba(0,255,157,0.5);
+  }
+  #header .subtitle {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-left: auto;
+  }
+  .header-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    animation: pulse-dot 2s infinite;
+  }
+  @keyframes pulse-dot {
+    0%,100%{ opacity:1; transform:scale(1); }
+    50%{ opacity:0.4; transform:scale(0.6); }
+  }
+
+  /* MAP SELECTOR en header */
+  #map-selector-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: 20px;
+  }
+  #map-selector-wrap label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 1px;
+  }
+  #map-selector {
+    background: var(--panel2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    padding: 4px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    outline: none;
+  }
+  #map-selector:focus { border-color: var(--accent); }
+
+  /* BOTÓN VOLVER AL INICIO */
+  #back-home {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    background: var(--panel2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    font-family: var(--font-body);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-decoration: none;
+    transition: all 0.18s;
+  }
+  #back-home:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  /* ══ SIDEBAR ══ */
+  #sidebar {
+    background: var(--panel);
+    border-right: 2px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .sidebar-section {
+    border-bottom: 1px solid var(--border);
+    padding: 14px;
+  }
+  .sidebar-section h3 {
+    font-family: var(--font-display);
+    font-size: 14px;
+    letter-spacing: 3px;
+    color: var(--muted);
+    margin-bottom: 10px;
+  }
+
+  /* ══ CONVENCIONES ══ */
+  .convention-btn {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 12px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--panel2);
+    color: var(--text);
+    cursor: pointer;
+    font-family: var(--font-body);
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    width: 100%;
+    text-align: left;
+    margin-bottom: 6px;
+    transition: all 0.18s;
+    position: relative;
+    overflow: hidden;
+  }
+  .convention-btn::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: currentColor;
+    opacity: 0;
+    transition: opacity 0.18s;
+  }
+  .convention-btn:hover::before { opacity: 0.07; }
+  .convention-btn.active {
+    border-color: currentColor;
+    box-shadow: 0 0 12px -2px currentColor;
+  }
+  .convention-btn .dot {
+    width: 16px; height: 16px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    box-shadow: 0 0 8px currentColor;
+  }
+  .convention-btn[data-type="critico"]  { color: var(--critico); }
+  .convention-btn[data-type="cultural"] { color: var(--cultural); }
+  .convention-btn[data-type="confianza"]{ color: var(--confianza); }
+  .convention-btn[data-type="expendio"] { color: var(--expendio); }
+  .convention-btn[data-type="casa"]     { color: var(--casa); }
+
+  /* TRAZADO / COMENTARIOS */
+  .tool-btn {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 12px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--panel2);
+    color: var(--text);
+    cursor: pointer;
+    font-family: var(--font-body);
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    width: 100%;
+    text-align: left;
+    margin-bottom: 6px;
+    transition: all 0.18s;
+  }
+  .tool-btn svg { flex-shrink: 0; }
+  .tool-btn:hover { background: var(--panel); border-color: var(--accent); }
+  .tool-btn.active { border-color: var(--accent); color: var(--accent); box-shadow: 0 0 12px -2px var(--accent); }
+
+  /* ══ LISTA DE PUNTOS ══ */
+  #points-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 10px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+  .point-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 8px;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    margin-bottom: 5px;
+    background: var(--panel2);
+    font-size: 12px;
+    cursor: pointer;
+    transition: border-color 0.15s;
+    position: relative;
+  }
+  .point-item:hover { border-color: var(--muted); }
+  .point-item .pi-dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+  .point-item .pi-info { flex: 1; min-width: 0; }
+  .point-item .pi-label { font-weight: 700; font-size: 11px; letter-spacing: 0.5px; }
+  .point-item .pi-comment {
+    color: var(--muted);
+    font-size: 10px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-family: var(--font-mono);
+  }
+  .point-item .pi-delete {
+    background: none;
+    border: none;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+    padding: 0 2px;
+    transition: color 0.15s;
+  }
+  .point-item .pi-delete:hover { color: var(--critico); }
+
+  /* ══ SAVE BUTTON ══ */
+  #save-btn {
+    margin: 10px;
+    padding: 12px;
+    background: linear-gradient(135deg, #00c97a, #00FF9D);
+    border: none;
+    border-radius: 6px;
+    color: #000;
+    font-family: var(--font-display);
+    font-size: 16px;
+    letter-spacing: 3px;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+  }
+  #save-btn:hover { transform: translateY(-1px); box-shadow: 0 4px 20px rgba(0,255,157,0.3); }
+  #save-btn:active { transform: translateY(0); }
+
+  .save-flash {
+    animation: save-flash-anim 0.6s ease;
+  }
+  @keyframes save-flash-anim {
+    0%{ background: linear-gradient(135deg,#fff,#fff); }
+    100%{ background: linear-gradient(135deg, #00c97a, #00FF9D); }
+  }
+
+  .mini-row { display:flex; gap:6px; margin:0 10px 8px; }
+  .mini-btn {
+    flex:1; padding:7px 4px; background:var(--panel2); border:1px solid var(--border);
+    border-radius:6px; color:var(--muted); font-family:var(--font-mono); font-size:10px;
+    letter-spacing:1px; cursor:pointer; transition:all .2s;
+  }
+  .mini-btn:hover { border-color:var(--accent); color:var(--accent); }
+  #sync-state { margin:0 10px 8px; font-family:var(--font-mono); font-size:10px; color:var(--muted); letter-spacing:1px; text-align:center; }
+  #sync-state.dirty { color:var(--cultural); }
+  #sync-state.ok { color:var(--accent); }
+  #gh-modal-box { width:420px; }
+  #gh-modal-box small { display:block; color:var(--muted); font-size:11px; line-height:1.4; margin:-6px 0 12px; font-family:var(--font-mono); }
+
+  /* CLEAR btn */
+  #clear-btn {
+    margin: 0 10px 10px;
+    padding: 8px;
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--muted);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 2px;
+    cursor: pointer;
+    transition: all 0.2s;
+    width: calc(100% - 20px);
+  }
+  #clear-btn:hover { border-color: var(--critico); color: var(--critico); }
+
+  /* ══ MAP ══ */
+  #map {
+    position: relative;
+    z-index: 1;
+  }
+
+  /* ══ STATUS BAR ══ */
+  #status {
+    position: absolute;
+    bottom: 30px;
+    right: 20px;
+    background: rgba(10,10,15,0.9);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 14px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--muted);
+    z-index: 1000;
+    backdrop-filter: blur(4px);
+    pointer-events: none;
+    transition: all 0.3s;
+  }
+  #status.visible { color: var(--accent); border-color: var(--accent); }
+
+  /* ══ MODAL COMENTARIO ══ */
+  #modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.7);
+    z-index: 10000;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(4px);
+  }
+  #modal-overlay.show { display: flex; }
+  #modal-box {
+    background: var(--panel);
+    border: 2px solid var(--border);
+    border-radius: 10px;
+    padding: 24px;
+    width: 380px;
+    max-width: 90vw;
+    position: relative;
+  }
+  #modal-box::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, var(--critico), var(--cultural), var(--confianza), var(--expendio), var(--casa));
+    border-radius: 10px 10px 0 0;
+  }
+  #modal-box h2 {
+    font-family: var(--font-display);
+    font-size: 22px;
+    letter-spacing: 3px;
+    margin-bottom: 16px;
+    color: var(--accent);
+  }
+  #modal-box label {
+    font-size: 11px;
+    letter-spacing: 2px;
+    color: var(--muted);
+    display: block;
+    margin-bottom: 4px;
+    text-transform: uppercase;
+  }
+  #modal-box input, #modal-box textarea {
+    width: 100%;
+    background: var(--panel2);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    color: var(--text);
+    font-family: var(--font-body);
+    font-size: 14px;
+    padding: 8px 10px;
+    margin-bottom: 12px;
+    outline: none;
+    resize: none;
+  }
+  #modal-box input:focus, #modal-box textarea:focus { border-color: var(--accent); }
+  #modal-box .modal-btns {
+    display: flex;
+    gap: 10px;
+    margin-top: 4px;
+  }
+  #modal-box .modal-btns button {
+    flex: 1;
+    padding: 10px;
+    border-radius: 5px;
+    border: none;
+    cursor: pointer;
+    font-family: var(--font-display);
+    font-size: 15px;
+    letter-spacing: 2px;
+    transition: opacity 0.2s;
+  }
+  #modal-btn-ok { background: var(--accent); color: #000; }
+  #modal-btn-cancel { background: var(--panel2); color: var(--muted); border: 1px solid var(--border) !important; }
+  #modal-box .modal-btns button:hover { opacity: 0.85; }
+
+  /* ══ LEAFLET OVERRIDES ══ */
+  .leaflet-container { background: #1a1a2a !important; }
+  .leaflet-control-zoom a {
+    background: var(--panel) !important;
+    color: var(--text) !important;
+    border-color: var(--border) !important;
+    font-weight: 700;
+  }
+  .leaflet-control-zoom a:hover { background: var(--panel2) !important; color: var(--accent) !important; }
+  .leaflet-popup-content-wrapper {
+    background: var(--panel) !important;
+    color: var(--text) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 8px !important;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.5) !important;
+    font-family: var(--font-body);
+  }
+  .leaflet-popup-tip { background: var(--panel) !important; }
+  .leaflet-popup-content { margin: 12px 14px !important; }
+  .popup-type {
+    font-family: var(--font-display);
+    font-size: 14px;
+    letter-spacing: 2px;
+    margin-bottom: 4px;
+  }
+  .popup-name { font-size: 15px; font-weight: 700; margin-bottom: 4px; }
+  .popup-comment { font-size: 12px; color: var(--muted); font-family: var(--font-mono); }
+
+  /* Trazado cursor */
+  .cursor-draw { cursor: crosshair !important; }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  /* Graffiti tag decorativo */
+  .tag-deco {
+    position: absolute;
+    font-family: var(--font-display);
+    font-size: 10px;
+    letter-spacing: 3px;
+    color: var(--border);
+    bottom: 8px; left: 14px;
+    pointer-events: none;
+  }
+
+  /* Contador puntos */
+  #count-badge {
+    background: var(--panel2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 2px 7px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--muted);
+    margin-left: auto;
+  }
+
+  /* Trazado en curso indicator */
+  #draw-indicator {
+    display: none;
+    position: absolute;
+    top: 80px; left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0,255,157,0.12);
+    border: 1px solid var(--accent);
+    border-radius: 6px;
+    padding: 6px 16px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--accent);
+    letter-spacing: 2px;
+    z-index: 1000;
+    backdrop-filter: blur(4px);
+    animation: blink-border 1.2s infinite;
+  }
+  #draw-indicator.show { display: block; }
+  @keyframes blink-border {
+    0%,100%{ border-color: var(--accent); }
+    50%{ border-color: transparent; }
+  }
+</style>
+</head>
+<body>
+
+<div id="app">
+  <!-- HEADER -->
+  <header id="header">
+    <div class="header-dot" style="background:var(--accent);"></div>
+    <a id="back-home" href="index.html">
+      <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+        <path d="M19 12H5"/><path d="M11 18l-6-6 6-6"/>
+      </svg>
+      INICIO
+    </a>
+    <h1>MAPA URBANO</h1>
+    <div id="map-selector-wrap">
+      <label>MAPA ›</label>
+      <select id="map-selector">
+        <option value="calles">Esri Calles</option>
+        <option value="dark">Esri Oscuro</option>
+        <option value="osm">OpenStreetMap</option>
+        <option value="satellite">Esri Satélite</option>
+        <option value="topo">OpenTopoMap</option>
+      </select>
+    </div>
+    <span class="subtitle">SISTEMA DE PUNTOS DE INTERÉS v1.2</span>
+  </header>
+
+  <!-- SIDEBAR -->
+  <aside id="sidebar">
+    <!-- CONVENCIONES -->
+    <div class="sidebar-section">
+      <h3>CONVENCIONES</h3>
+      <button class="convention-btn" data-type="critico">
+        <span class="dot" style="background:var(--critico);"></span>
+        PUNTO CRÍTICO
+      </button>
+      <button class="convention-btn" data-type="cultural">
+        <span class="dot" style="background:var(--cultural);"></span>
+        ESPACIO CULTURAL
+      </button>
+      <button class="convention-btn" data-type="confianza">
+        <span class="dot" style="background:var(--confianza);"></span>
+        PUNTO DE CONFIANZA
+      </button>
+      <button class="convention-btn" data-type="expendio">
+        <span class="dot" style="background:var(--expendio);"></span>
+        ÁREA DE EXPENDIO
+      </button>
+      <button class="convention-btn" data-type="casa">
+        <span class="dot" style="background:var(--casa);"></span>
+        TU CASA
+      </button>
+    </div>
+
+    <!-- HERRAMIENTAS -->
+    <div class="sidebar-section">
+      <h3>HERRAMIENTAS</h3>
+      <button class="tool-btn" id="btn-comentario">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+        </svg>
+        COMENTARIOS
+      </button>
+      <button class="tool-btn" id="btn-trazado">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path d="M3 17l4-8 4 4 4-6 4 10"/>
+        </svg>
+        TRAZADO DE RECORRIDO
+      </button>
+      <button class="tool-btn" id="btn-borrar-trazado" style="font-size:11px; color:var(--muted);">
+        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/>
+        </svg>
+        BORRAR RECORRIDO
+      </button>
+    </div>
+
+    <!-- LISTA PUNTOS -->
+    <div class="sidebar-section" style="flex:1;overflow:hidden;display:flex;flex-direction:column;border-bottom:none;">
+      <h3 style="display:flex;align-items:center;">PUNTOS <span id="count-badge">0</span></h3>
+      <div id="points-list"></div>
+    </div>
+
+    <!-- BOTONES GUARDAR/LIMPIAR -->
+    <button id="save-btn">
+      <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+        <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+        <polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/>
+      </svg>
+      GUARDAR
+    </button>
+    <div id="sync-state">—</div>
+    <div class="mini-row">
+      <button class="mini-btn" id="btn-db-config" title="Base de datos compartida">⚙ BASE DE DATOS</button>
+      <button class="mini-btn" id="btn-refresh" title="Actualizar puntos">⟳ ACTUALIZAR</button>
+      <button class="mini-btn" id="btn-export" title="Descargar copia de seguridad">⬇ COPIA</button>
+    </div>
+    <button id="clear-btn">LIMPIAR TODO</button>
+    <div class="tag-deco">© MAPA URBANO</div>
+  </aside>
+
+  <!-- MAP -->
+  <div id="map"></div>
+</div>
+
+<!-- DRAW INDICATOR -->
+<div id="draw-indicator">✦ MODO TRAZADO ACTIVO — CLICK EN MAPA PARA TRAZAR</div>
+
+<!-- STATUS -->
+<div id="status">Selecciona una convención para marcar</div>
+
+<!-- MODAL -->
+<div id="modal-overlay">
+  <div id="modal-box">
+    <h2>NUEVO PUNTO</h2>
+    <label>NOMBRE DEL PUNTO</label>
+    <input type="text" id="modal-name" placeholder="Ej: Cancha central...">
+    <label>COMENTARIO (OPCIONAL)</label>
+    <textarea id="modal-comment" rows="3" placeholder="Describe este lugar..."></textarea>
+    <div class="modal-btns">
+      <button id="modal-btn-ok">MARCAR</button>
+      <button id="modal-btn-cancel">CANCELAR</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL BASE DE DATOS -->
+<div id="db-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:10001;align-items:center;justify-content:center;backdrop-filter:blur(4px);">
+  <div class="db-box" style="background:var(--panel);border:2px solid var(--border);border-radius:10px;padding:24px;width:460px;max-width:92vw;">
+    <h2 style="font-family:var(--font-display);font-size:22px;letter-spacing:3px;color:var(--accent);margin-bottom:14px;">BASE DE DATOS COMPARTIDA</h2>
+    <label style="font-size:11px;letter-spacing:2px;color:var(--muted);display:block;margin-bottom:4px;">URL DE FIREBASE REALTIME DATABASE</label>
+    <input type="text" id="db-url" placeholder="https://tu-proyecto-default-rtdb.firebaseio.com"
+      style="width:100%;background:var(--panel2);border:1px solid var(--border);border-radius:5px;color:var(--text);font-family:var(--font-mono);font-size:12px;padding:8px 10px;margin-bottom:10px;outline:none;">
+    <div style="font-size:11px;color:var(--muted);font-family:var(--font-mono);line-height:1.5;margin-bottom:14px;">
+      Esta URL solo se guarda en este navegador. Para que <b>todos</b> los dispositivos la usen sin configurar nada,
+      pégala también en la línea <b>const DB_URL</b> al inicio del script de cartografia.html.
+    </div>
+    <div style="display:flex;gap:10px;">
+      <button id="db-ok" style="flex:1;padding:10px;border:none;border-radius:5px;background:var(--accent);color:#000;font-family:var(--font-display);font-size:15px;letter-spacing:2px;cursor:pointer;">CONECTAR</button>
+      <button id="db-cancel" style="flex:1;padding:10px;border:1px solid var(--border);border-radius:5px;background:var(--panel2);color:var(--muted);font-family:var(--font-display);font-size:15px;letter-spacing:2px;cursor:pointer;">CERRAR</button>
+    </div>
+  </div>
+</div>
+
+<!-- Leaflet JS -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+
+<script>
+// ══════════════════════════════════════════
+//  CONFIGURACIÓN DE CAPAS DE MAPA
+// ══════════════════════════════════════════
+const MAP_LAYERS = {
+  // Esri: gratis, sin clave y funciona abierto desde el disco (file://) y en GitHub Pages
+  calles: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
+    attribution: '© Esri', maxZoom: 19
+  }),
+  dark: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
+    attribution: '© Esri', maxZoom: 16
+  }),
+  // OSM bloquea (403) las páginas abiertas como file:// porque no envían Referer.
+  // Funciona al estar publicado en GitHub Pages; si falla, se cambia solo a CartoDB.
+  osm: L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap', maxZoom: 19, referrerPolicy: 'strict-origin-when-cross-origin'
+  }),
+  satellite: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    attribution: '© Esri', maxZoom: 18
+  }),
+  topo: L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenTopoMap', maxZoom: 17
+  })
+};
+
+// ══════════════════════════════════════════
+//  INICIALIZAR MAPA
+// ══════════════════════════════════════════
+const map = L.map('map', {
+  center: [4.711, -74.0721], // Bogotá
+  zoom: 14,
+  zoomControl: true,
+  attributionControl: false
+});
+
+const selector = document.getElementById('map-selector');
+let currentKey = localStorage.getItem('mapa_urbano_capa');
+if (!MAP_LAYERS[currentKey]) currentKey = 'calles';
+let currentLayer;
+
+function setBaseLayer(key, silent) {
+  if (currentLayer) map.removeLayer(currentLayer);
+  currentKey = key;
+  currentLayer = MAP_LAYERS[key];
+  currentLayer.addTo(map);
+  selector.value = key;
+  try { localStorage.setItem('mapa_urbano_capa', key); } catch(e) {}
+}
+
+// Si una capa falla (403, sin red, etc.) volver automáticamente a CartoDB
+let tileErrors = 0;
+Object.entries(MAP_LAYERS).forEach(([key, layer]) => {
+  layer.on('tileerror', () => {
+    if (key !== currentKey) return;
+    if (++tileErrors >= 3) {
+      tileErrors = 0;
+      const next = key === 'calles' ? 'satellite' : 'calles';
+      setBaseLayer(next);
+      setStatus('⚠ Ese mapa no carga aquí. Cambiando a otro proveedor.', true);
+    }
+  });
+});
+
+setBaseLayer(currentKey);
+selector.addEventListener('change', function() { tileErrors = 0; setBaseLayer(this.value); });
+
+// ══════════════════════════════════════════
+//  ESTADO DE LA APP
+// ══════════════════════════════════════════
+const TYPES = {
+  critico:   { label: 'PUNTO CRÍTICO',    color: '#FF2020' },
+  cultural:  { label: 'ESPACIO CULTURAL', color: '#FFD700' },
+  confianza: { label: 'PUNTO CONFIANZA',  color: '#1E90FF' },
+  expendio:  { label: 'ÁREA EXPENDIO',    color: '#FF7F00' },
+  casa:      { label: 'TU CASA',          color: '#9B59B6' }
+};
+
+let activeType = null;
+let commentMode = false;
+let drawMode = false;
+let points = [];
+let markers = {};       // id -> L.marker
+let drawPolyline = null;
+let drawCoords = [];
+let pendingLatLng = null;
+
+// ══════════════════════════════════════════
+//  BASE DE DATOS COLECTIVA (Firebase Realtime Database, vía REST)
+// ══════════════════════════════════════════
+// Pega aquí la URL de tu base de datos, sin "/" al final. Ejemplo:
+//   const DB_URL = 'https://mapa-urbano-12345-default-rtdb.firebaseio.com';
+const DB_URL = 'https://cartografia-8ab4f-default-rtdb.firebaseio.com';
+
+const LS_KEY = 'mapa_urbano_v2';      // caché local (también contiene los puntos de versiones anteriores)
+const LS_DB  = 'mapa_urbano_dburl';
+const POLL_MS = 8000;
+
+function dbUrl() {
+  return (DB_URL || localStorage.getItem(LS_DB) || '').trim().replace(/\/+$/, '');
+}
+
+function esc(t) {
+  return String(t ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function newId() { return 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
+// id fijo para puntos antiguos: así, aunque se suban dos veces, no se duplican
+function legacyId(p) { return 'l_' + p.type + '_' + Math.round(p.lat * 1e6) + '_' + Math.round(p.lng * 1e6); }
+
+function clean(p) {   // lo que viaja a la base de datos
+  return { type: p.type, lat: p.lat, lng: p.lng, name: p.name || '', comment: p.comment || '', t: p.t || Date.now() };
+}
+
+let routePending = false;
+let syncing = false;
+let connected = false;
+
+function persistLocal() {
+  try { localStorage.setItem(LS_KEY, JSON.stringify({ version: 4, points, drawCoords, routePending })); } catch(e) {}
+}
+
+function updateSyncState() {
+  const el = document.getElementById('sync-state');
+  const pend = points.filter(p => p.pending).length + (routePending ? 1 : 0);
+  if (!dbUrl()) { el.textContent = '● SIN BASE DE DATOS — pulsa ⚙'; el.className = 'dirty'; }
+  else if (pend) { el.textContent = `● ${pend} SIN SUBIR — pulsa GUARDAR`; el.className = 'dirty'; }
+  else if (connected) { el.textContent = `✓ SINCRONIZADO · ${points.length} puntos`; el.className = 'ok'; }
+  else { el.textContent = '● SIN CONEXIÓN'; el.className = 'dirty'; }
+}
+
+async function dbReq(path, method = 'GET', body) {
+  const r = await fetch(`${dbUrl()}/${path}.json`, {
+    method, cache: 'no-store',
+    headers: body !== undefined ? { 'Content-Type': 'application/json' } : undefined,
+    body: body !== undefined ? JSON.stringify(body) : undefined
+  });
+  if (!r.ok) throw new Error(r.status === 401 || r.status === 403 ? 'La base de datos rechazó el acceso (revisa las reglas)' : 'Error ' + r.status);
+  return r.json();
+}
+
+// ---------- subir ----------
+async function pushPoint(p) {
+  if (!dbUrl()) { updateSyncState(); return false; }
+  try {
+    await dbReq('puntos/' + p.id, 'PUT', clean(p));
+    p.pending = false; persistLocal(); connected = true; updateSyncState();
+    return true;
+  } catch(e) { connected = false; updateSyncState(); setStatus('✗ ' + e.message); return false; }
+}
+
+async function pushRoute() {
+  routePending = true; persistLocal();
+  if (!dbUrl()) { updateSyncState(); return; }
+  try {
+    await dbReq('recorrido', 'PUT', drawCoords.length ? drawCoords.map(c => ({ lat: c[0], lng: c[1] })) : null);
+    routePending = false; persistLocal(); connected = true;
+  } catch(e) { connected = false; setStatus('✗ ' + e.message); }
+  updateSyncState();
+}
+
+// ---------- traer ----------
+function applyRemote(remotePts, remoteRoute) {
+  const remote = {};
+  Object.entries(remotePts || {}).forEach(([id, v]) => {
+    if (v && TYPES[v.type] && isFinite(v.lat) && isFinite(v.lng)) remote[id] = { id, pending: false, ...v };
+  });
+
+  // puntos locales aún sin subir se conservan
+  const pending = points.filter(p => p.pending && !remote[p.id]);
+
+  // quitar marcadores de puntos que ya no existen
+  Object.keys(markers).forEach(id => {
+    if (!remote[id] && !pending.find(p => p.id === id)) { map.removeLayer(markers[id]); delete markers[id]; }
+  });
+
+  const prev = {};
+  points.forEach(p => prev[p.id] = p);
+  points = [...Object.values(remote), ...pending].sort((a, b) => (a.t || 0) - (b.t || 0));
+
+  points.forEach(p => {
+    const old = prev[p.id];
+    const changed = old && (old.name !== p.name || old.comment !== p.comment || old.type !== p.type || old.lat !== p.lat || old.lng !== p.lng);
+    if (!markers[p.id]) addMarkerToMap(p);
+    else if (changed) { map.removeLayer(markers[p.id]); addMarkerToMap(p); }
+  });
+
+  // recorrido compartido (no pisar si estoy trazando)
+  if (!routePending && !drawMode) {
+    const r = Array.isArray(remoteRoute) ? remoteRoute : Object.values(remoteRoute || {});
+    drawCoords = r.filter(c => c && isFinite(c.lat)).map(c => [c.lat, c.lng]);
+    renderPolyline();
+  }
+  renderList();
+  persistLocal();
+}
+
+async function pull() {
+  if (!dbUrl()) { updateSyncState(); return false; }
+  try {
+    const [pts, route] = await Promise.all([dbReq('puntos'), dbReq('recorrido')]);
+    applyRemote(pts, route);
+    connected = true; updateSyncState();
+    return true;
+  } catch(e) { connected = false; updateSyncState(); setStatus('✗ ' + e.message); return false; }
+}
+
+// ---------- sincronización completa (botón GUARDAR) ----------
+async function saveData() {
+  if (syncing) return;
+  const btn = document.getElementById('save-btn');
+  if (!dbUrl()) { openDbModal(); setStatus('Primero conecta la base de datos', true); return; }
+  syncing = true; btn.disabled = true;
+  setStatus('Guardando en la base de datos…', true);
+  let fails = 0;
+  for (const p of points.filter(p => p.pending)) { if (!(await pushPoint(p))) fails++; }
+  if (routePending) await pushRoute();
+  await pull();
+  syncing = false; btn.disabled = false;
+  if (fails) setStatus(`✗ ${fails} punto(s) no se pudieron subir`);
+  else {
+    btn.classList.add('save-flash'); setTimeout(() => btn.classList.remove('save-flash'), 700);
+    setStatus(`✓ Guardado. ${points.length} puntos en la base compartida`, true);
+  }
+}
+
+// ---------- carga inicial ----------
+async function loadSaved() {
+  let local = null;
+  try { local = JSON.parse(localStorage.getItem(LS_KEY) || 'null'); } catch(e) {}
+  if (local) {
+    const seen = new Set();
+    points = (local.points || []).filter(p => TYPES[p.type] && isFinite(p.lat) && isFinite(p.lng)).map(p => {
+      const legacy = typeof p.id !== 'string' || p.pending === undefined;   // viene de la versión anterior
+      const q = { ...p, id: typeof p.id === 'string' ? p.id : legacyId(p), pending: legacy ? true : !!p.pending, t: p.t || Date.now() };
+      return q;
+    }).filter(p => !seen.has(p.id) && seen.add(p.id));
+    drawCoords = local.drawCoords || [];
+    routePending = !!local.routePending || (local.version !== 4 && drawCoords.length > 0);
+    points.forEach(addMarkerToMap);
+    renderPolyline();
+    renderList();
+    persistLocal();
+  }
+  updateSyncState();
+  if (!dbUrl()) { openDbModal(); return; }
+
+  // subir automáticamente lo que estaba solo en este navegador (p. ej. los 47 puntos antiguos)
+  if (points.some(p => p.pending) || routePending) await saveData();
+  else await pull();
+}
+
+setInterval(() => { if (!syncing && !document.hidden && dbUrl()) pull(); }, POLL_MS);
+document.addEventListener('visibilitychange', () => { if (!document.hidden && dbUrl()) pull(); });
+
+// ---------- ajustes ----------
+function openDbModal() {
+  document.getElementById('db-url').value = dbUrl();
+  document.getElementById('db-overlay').style.display = 'flex';
+}
+document.getElementById('btn-db-config').addEventListener('click', openDbModal);
+document.getElementById('db-cancel').addEventListener('click', () => document.getElementById('db-overlay').style.display = 'none');
+document.getElementById('db-ok').addEventListener('click', async () => {
+  let u = document.getElementById('db-url').value.trim().replace(/\/+$/, '');
+  if (u && !/^https:\/\/.+/.test(u)) { setStatus('✗ La URL debe empezar con https://'); return; }
+  try { localStorage.setItem(LS_DB, u); } catch(e) {}
+  document.getElementById('db-overlay').style.display = 'none';
+  if (u) await saveData();
+});
+document.getElementById('btn-refresh').addEventListener('click', async () => { setStatus('Actualizando…', true); if (await pull()) setStatus(`✓ ${points.length} puntos`, true); });
+
+// ---------- copia de seguridad ----------
+document.getElementById('btn-export').addEventListener('click', () => {
+  const blob = new Blob([JSON.stringify({ points: points.map(p => ({ id: p.id, ...clean(p) })), drawCoords }, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = 'copia-puntos.json';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  setStatus('Copia de seguridad descargada', true);
+});
+
+// ══════════════════════════════════════════
+//  CREAR ICONO SVG
+// ══════════════════════════════════════════
+function createIcon(type) {
+  const color = TYPES[type].color;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="36" viewBox="0 0 28 36">
+    <filter id="glow"><feGaussianBlur stdDeviation="2" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    <ellipse cx="14" cy="33" rx="5" ry="2.5" fill="rgba(0,0,0,0.4)"/>
+    <path d="M14 1C7.925 1 3 5.925 3 12c0 8 11 23 11 23s11-15 11-23C25 5.925 20.075 1 14 1z" 
+          fill="${color}" stroke="rgba(255,255,255,0.3)" stroke-width="1.2" filter="url(#glow)"/>
+    <circle cx="14" cy="11" r="5" fill="rgba(255,255,255,0.25)"/>
+  </svg>`;
+  return L.divIcon({
+    html: svg,
+    className: '',
+    iconSize: [28, 36],
+    iconAnchor: [14, 35],
+    popupAnchor: [0, -36]
+  });
+}
+
+// ══════════════════════════════════════════
+//  POPUP CONTENT
+// ══════════════════════════════════════════
+function popupContent(p) {
+  const color = TYPES[p.type].color;
+  return `<div class="popup-type" style="color:${color}">${TYPES[p.type].label}</div>
+          <div class="popup-name">${esc(p.name) || '—'}</div>
+          ${p.comment ? `<div class="popup-comment">${esc(p.comment)}</div>` : ''}`;
+}
+
+// ══════════════════════════════════════════
+//  AGREGAR MARCADOR AL MAPA
+// ══════════════════════════════════════════
+function addMarkerToMap(p) {
+  const m = L.marker([p.lat, p.lng], { icon: createIcon(p.type) })
+    .addTo(map)
+    .bindPopup(popupContent(p));
+  markers[p.id] = m;
+}
+
+// ══════════════════════════════════════════
+//  RENDERIZAR POLYLINE
+// ══════════════════════════════════════════
+function renderPolyline() {
+  if (drawPolyline) map.removeLayer(drawPolyline);
+  if (drawCoords.length < 2) { drawPolyline = null; return; }
+  drawPolyline = L.polyline(drawCoords, {
+    color: '#00FF9D',
+    weight: 3,
+    opacity: 0.85,
+    dashArray: '8, 5',
+    lineCap: 'round'
+  }).addTo(map);
+}
+
+// ══════════════════════════════════════════
+//  ACTUALIZAR LISTA SIDEBAR
+// ══════════════════════════════════════════
+function renderList() {
+  const list = document.getElementById('points-list');
+  document.getElementById('count-badge').textContent = points.length;
+  list.innerHTML = '';
+  if (!points.length) {
+    list.innerHTML = `<div style="color:var(--muted);font-size:11px;text-align:center;padding:20px;font-family:var(--font-mono);">— SIN PUNTOS —</div>`;
+    return;
+  }
+  [...points].reverse().forEach(p => {
+    const div = document.createElement('div');
+    div.className = 'point-item';
+    div.innerHTML = `
+      <span class="pi-dot" style="background:${TYPES[p.type].color};"></span>
+      <div class="pi-info">
+        <div class="pi-label" style="color:${TYPES[p.type].color}">${esc(p.name) || TYPES[p.type].label}</div>
+        <div class="pi-comment">${esc(p.comment) || '—'}</div>
+      </div>
+      <button class="pi-delete" data-id="${p.id}" title="Eliminar">✕</button>
+    `;
+    div.addEventListener('click', (e) => {
+      if (e.target.classList.contains('pi-delete')) return;
+      map.flyTo([p.lat, p.lng], 16, { duration: 0.8 });
+      if (markers[p.id]) markers[p.id].openPopup();
+    });
+    div.querySelector('.pi-delete').addEventListener('click', () => deletePoint(p.id));
+    list.appendChild(div);
+  });
+}
+
+// ══════════════════════════════════════════
+//  ELIMINAR PUNTO
+// ══════════════════════════════════════════
+function deletePoint(id) {
+  if (markers[id]) { map.removeLayer(markers[id]); delete markers[id]; }
+  points = points.filter(p => p.id !== id);
+  renderList();
+  persistLocal();
+  setStatus('Punto eliminado');
+  if (dbUrl()) dbReq('puntos/' + id, 'DELETE').then(() => { connected = true; updateSyncState(); }).catch(e => setStatus('✗ No se pudo borrar en la base: ' + e.message));
+}
+
+// ══════════════════════════════════════════
+//  STATUS BAR
+// ══════════════════════════════════════════
+let statusTimer;
+function setStatus(msg, highlight = false) {
+  const el = document.getElementById('status');
+  el.textContent = msg;
+  el.className = highlight ? 'visible' : '';
+  clearTimeout(statusTimer);
+  if (highlight) {
+    statusTimer = setTimeout(() => { el.className = ''; }, 2500);
+  }
+}
+
+// ══════════════════════════════════════════
+//  CONVENCIONES BOTONES
+// ══════════════════════════════════════════
+document.querySelectorAll('.convention-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const t = btn.dataset.type;
+    if (activeType === t) {
+      activeType = null;
+      btn.classList.remove('active');
+      setStatus('Selecciona una convención para marcar');
+    } else {
+      document.querySelectorAll('.convention-btn').forEach(b => b.classList.remove('active'));
+      activeType = t;
+      btn.classList.add('active');
+      // desactivar otros modos
+      commentMode = false;
+      drawMode = false;
+      document.getElementById('btn-comentario').classList.remove('active');
+      document.getElementById('btn-trazado').classList.remove('active');
+      document.getElementById('draw-indicator').classList.remove('show');
+      map.getContainer().classList.remove('cursor-draw');
+      setStatus(`Modo: ${TYPES[t].label} — Click en el mapa para marcar`);
+    }
+  });
+});
+
+// ══════════════════════════════════════════
+//  MODO COMENTARIOS (click + popup de nombre/comentario al poner punto)
+// ══════════════════════════════════════════
+document.getElementById('btn-comentario').addEventListener('click', () => {
+  commentMode = !commentMode;
+  document.getElementById('btn-comentario').classList.toggle('active', commentMode);
+  if (commentMode) {
+    setStatus('Modo comentarios ON — Al marcar un punto podrás agregar nombre y descripción');
+  } else {
+    setStatus('Modo comentarios OFF');
+  }
+});
+
+// ══════════════════════════════════════════
+//  MODO TRAZADO
+// ══════════════════════════════════════════
+document.getElementById('btn-trazado').addEventListener('click', () => {
+  drawMode = !drawMode;
+  const btn = document.getElementById('btn-trazado');
+  const ind = document.getElementById('draw-indicator');
+  btn.classList.toggle('active', drawMode);
+  ind.classList.toggle('show', drawMode);
+  map.getContainer().classList.toggle('cursor-draw', drawMode);
+  // desactivar convenciones si trazado activo
+  if (drawMode) {
+    activeType = null;
+    document.querySelectorAll('.convention-btn').forEach(b => b.classList.remove('active'));
+    setStatus('TRAZADO activo — Haz click en el mapa para trazar el recorrido');
+  } else {
+    setStatus('Trazado pausado');
+    ind.classList.remove('show');
+    map.getContainer().classList.remove('cursor-draw');
+  }
+});
+
+document.getElementById('btn-borrar-trazado').addEventListener('click', () => {
+  drawCoords = [];
+  if (drawPolyline) { map.removeLayer(drawPolyline); drawPolyline = null; }
+  pushRoute();
+  setStatus('Recorrido borrado');
+});
+
+// ══════════════════════════════════════════
+//  MODAL
+// ══════════════════════════════════════════
+let resolveModal = null;
+
+function openModal(type) {
+  const overlay = document.getElementById('modal-overlay');
+  const title = document.getElementById('modal-box').querySelector('h2');
+  title.style.color = TYPES[type].color;
+  title.textContent = TYPES[type].label;
+  document.getElementById('modal-name').value = '';
+  document.getElementById('modal-comment').value = '';
+  overlay.classList.add('show');
+  document.getElementById('modal-name').focus();
+  return new Promise(resolve => { resolveModal = resolve; });
+}
+
+document.getElementById('modal-btn-ok').addEventListener('click', () => {
+  const name = document.getElementById('modal-name').value.trim();
+  const comment = document.getElementById('modal-comment').value.trim();
+  document.getElementById('modal-overlay').classList.remove('show');
+  if (resolveModal) resolveModal({ name, comment });
+});
+
+document.getElementById('modal-btn-cancel').addEventListener('click', () => {
+  document.getElementById('modal-overlay').classList.remove('show');
+  if (resolveModal) resolveModal(null);
+});
+
+document.getElementById('modal-overlay').addEventListener('click', (e) => {
+  if (e.target === document.getElementById('modal-overlay')) {
+    document.getElementById('modal-overlay').classList.remove('show');
+    if (resolveModal) resolveModal(null);
+  }
+});
+
+// Enter en name -> focus comment
+document.getElementById('modal-name').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') document.getElementById('modal-comment').focus();
+});
+document.getElementById('modal-comment').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) document.getElementById('modal-btn-ok').click();
+});
+
+// ══════════════════════════════════════════
+//  CLICK EN MAPA
+// ══════════════════════════════════════════
+map.on('click', async function(e) {
+  const { lat, lng } = e.latlng;
+
+  // Modo trazado
+  if (drawMode) {
+    drawCoords.push([lat, lng]);
+    renderPolyline();
+    pushRoute();
+    setStatus(`Trazado: ${drawCoords.length} punto(s) — Click para continuar`);
+    return;
+  }
+
+  // Modo convención
+  if (!activeType) {
+    setStatus('Selecciona una convención en el panel', false);
+    return;
+  }
+
+  let name = '';
+  let comment = '';
+
+  // Si modo comentario activo, abrir modal
+  if (commentMode) {
+    const result = await openModal(activeType);
+    if (!result) return;
+    name = result.name;
+    comment = result.comment;
+  }
+
+  const p = { id: newId(), type: activeType, lat, lng, name, comment, t: Date.now(), pending: true };
+  points.push(p);
+  addMarkerToMap(p);
+  renderList();
+  persistLocal();
+  pushPoint(p);          // se sube a la base compartida al instante
+  setStatus(`Punto "${TYPES[activeType].label}" marcado`, true);
+  markers[p.id].openPopup();
+});
+
+// ══════════════════════════════════════════
+//  GUARDAR / LIMPIAR
+// ══════════════════════════════════════════
+document.getElementById('save-btn').addEventListener('click', saveData);
+
+document.getElementById('clear-btn').addEventListener('click', async () => {
+  const t = prompt('⚠ Esto borra TODOS los puntos y el recorrido para TODOS los dispositivos.\nEscribe BORRAR para confirmar:');
+  if (t !== 'BORRAR') return;
+  try {
+    if (dbUrl()) { await dbReq('puntos', 'DELETE'); await dbReq('recorrido', 'DELETE'); }
+    Object.values(markers).forEach(m => map.removeLayer(m));
+    markers = {}; points = []; drawCoords = []; routePending = false;
+    if (drawPolyline) { map.removeLayer(drawPolyline); drawPolyline = null; }
+    renderList(); persistLocal(); updateSyncState();
+    setStatus('Mapa limpio', true);
+  } catch(e) { setStatus('✗ ' + e.message); }
+});
+
+// ══════════════════════════════════════════
+//  INIT
+// ══════════════════════════════════════════
+renderList();
+loadSaved();
+setStatus('Selecciona una convención para marcar');
+</script>
+</body>
+</html>
